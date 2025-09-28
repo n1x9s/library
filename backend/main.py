@@ -1,6 +1,7 @@
 """
 Главный файл приложения FastAPI
 """
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,21 +18,21 @@ async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
     # Создание таблиц базы данных
     Base.metadata.create_all(bind=engine)
-    
+
     # Создание директорий для загрузок
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "avatars"), exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "book_covers"), exist_ok=True)
-    
+
     yield
 
 
 # Создание приложения FastAPI
 app = FastAPI(
     title="Library Exchange API",
-    description="REST API для мобильного приложения обмена книгами",
+    description="REST API для приложения обмена книгами",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Настройка CORS
@@ -56,11 +57,7 @@ app.include_router(notifications.router)
 @app.get("/")
 async def root():
     """Корневой endpoint"""
-    return {
-        "message": "Library Exchange API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+    return {"message": "Library Exchange API", "version": "1.0.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -71,9 +68,7 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
-        "main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug
+        "main:app", host=settings.host, port=settings.port, reload=settings.debug
     )

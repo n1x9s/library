@@ -1,6 +1,7 @@
 """
 Модель уведомления
 """
+
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Enum
@@ -12,6 +13,7 @@ import enum
 
 class NotificationType(str, enum.Enum):
     """Тип уведомления"""
+
     BOOKING_CREATED = "booking_created"
     RETURN_REMINDER = "return_reminder"
     BOOK_AVAILABLE = "book_available"
@@ -20,6 +22,7 @@ class NotificationType(str, enum.Enum):
 
 class Notification(Base):
     """Модель уведомления"""
+
     __tablename__ = "notifications"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)

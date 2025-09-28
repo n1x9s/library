@@ -1,6 +1,7 @@
 """
 API endpoints для работы с книгами
 """
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
@@ -11,8 +12,12 @@ from app.core.database import get_db
 from app.core.security import get_user_id_from_token
 from app.utils.image_processing import validate_image, process_image
 from app.schemas.book import (
-    BookCreate, BookUpdate, BookResponse, BookListResponse, 
-    BookSearchParams, BookSearchParams as SearchParams
+    BookCreate,
+    BookUpdate,
+    BookResponse,
+    BookListResponse,
+    BookSearchParams,
+    BookSearchParams as SearchParams,
 )
 from app.services.book_service import BookService
 
@@ -20,7 +25,7 @@ router = APIRouter(prefix="/books", tags=["Книги"])
 security = HTTPBearer()
 
 
-def get_current_user_id(credentials = Depends(security)) -> str:
+def get_current_user_id(credentials=Depends(security)) -> str:
     """Получение ID текущего пользователя из токена"""
     token = credentials.credentials
     return get_user_id_from_token(token)
@@ -28,18 +33,20 @@ def get_current_user_id(credentials = Depends(security)) -> str:
 
 @router.get("/", response_model=BookListResponse)
 async def get_books(
-    search: Optional[str] = Query(None, description="Поиск по названию, автору или ISBN"),
+    search: Optional[str] = Query(
+        None, description="Поиск по названию, автору или ISBN"
+    ),
     genre: Optional[str] = Query(None, description="Фильтр по жанру"),
     author: Optional[str] = Query(None, description="Фильтр по автору"),
     owner_id: Optional[str] = Query(None, description="Фильтр по владельцу"),
     available_only: bool = Query(True, description="Показать только доступные книги"),
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(20, ge=1, le=100, description="Количество книг на странице"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Получение каталога книг с фильтрацией и поиском"""
     book_service = BookService(db)
-    
+
     search_params = SearchParams(
         search=search,
         genre=genre,
@@ -47,25 +54,21 @@ async def get_books(
         owner_id=owner_id,
         available_only=available_only,
         page=page,
-        limit=limit
+        limit=limit,
     )
-    
+
     books, total = book_service.get_books(search_params)
-    
+
     # Преобразование в формат ответа
     book_responses = []
     for book in books:
         book_response = BookResponse.model_validate(book)
         book_responses.append(book_response)
-    
+
     pages = (total + limit - 1) // limit
-    
+
     return BookListResponse(
-        books=book_responses,
-        total=total,
-        page=page,
-        limit=limit,
-        pages=pages
+        books=book_responses, total=total, page=page, limit=limit, pages=pages
     )
 
 
@@ -74,13 +77,12 @@ async def get_book(book_id: str, db: Session = Depends(get_db)):
     """Детальная информация о книге"""
     book_service = BookService(db)
     book = book_service.get_book_with_owner(book_id)
-    
+
     if not book:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Книга не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Книга не найдена"
         )
-    
+
     return book
 
 
@@ -88,7 +90,7 @@ async def get_book(book_id: str, db: Session = Depends(get_db)):
 async def create_book(
     book_data: BookCreate,
     current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Добавление новой книги"""
     book_service = BookService(db)
@@ -101,28 +103,26 @@ async def update_book(
     book_id: str,
     book_data: BookUpdate,
     current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Редактирование книги"""
     book_service = BookService(db)
-    
+
     # Фильтруем None значения
     update_data = {k: v for k, v in book_data.dict().items() if v is not None}
-    
+
     if not update_data:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нет данных для обновления"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Нет данных для обновления"
         )
-    
+
     book = book_service.update_book(book_id, BookUpdate(**update_data), current_user_id)
-    
+
     if not book:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Книга не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Книга не найдена"
         )
-    
+
     return book
 
 
@@ -130,16 +130,15 @@ async def update_book(
 async def delete_book(
     book_id: str,
     current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Удаление книги"""
     book_service = BookService(db)
     success = book_service.delete_book(book_id, current_user_id)
-    
+
     if not success:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Книга не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Книга не найдена"
         )
 
 
@@ -148,55 +147,54 @@ async def upload_book_cover(
     book_id: str,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Загрузка обложки книги"""
     book_service = BookService(db)
-    
+
     # Проверяем, что книга существует и принадлежит пользователю
     book = book_service.get_book_by_id(book_id)
     if not book:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Книга не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Книга не найдена"
         )
-    
+
     if book.owner_id != current_user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет прав для загрузки обложки этой книги"
+            detail="Нет прав для загрузки обложки этой книги",
         )
-    
+
     # Валидируем загружаемый файл
     validate_image(file)
-    
+
     # Создаем директорию для обложек книг
     book_covers_dir = os.path.join("static", "uploads", "book_covers")
     os.makedirs(book_covers_dir, exist_ok=True)
-    
+
     # Обрабатываем и сохраняем изображение
     try:
         file_path = process_image(file, book_covers_dir, max_size=(800, 600))
-        
+
         # Удаляем старую обложку если есть
         if book.cover_image_url:
             old_cover_path = book.cover_image_url.replace("/static/", "static/")
             if os.path.exists(old_cover_path):
                 os.remove(old_cover_path)
-        
+
         # Обновляем URL обложки в базе данных
         cover_url = f"/static/uploads/book_covers/{os.path.basename(file_path)}"
         book.cover_image_url = cover_url
         book.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(book)
-        
+
         return BookResponse.model_validate(book)
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ошибка при загрузке обложки: {str(e)}"
+            detail=f"Ошибка при загрузке обложки: {str(e)}",
         )
 
 
@@ -204,59 +202,53 @@ async def upload_book_cover(
 async def delete_book_cover(
     book_id: str,
     current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Удаление обложки книги"""
     book_service = BookService(db)
-    
+
     # Проверяем, что книга существует и принадлежит пользователю
     book = book_service.get_book_by_id(book_id)
     if not book:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Книга не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Книга не найдена"
         )
-    
+
     if book.owner_id != current_user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет прав для удаления обложки этой книги"
+            detail="Нет прав для удаления обложки этой книги",
         )
-    
+
     # Удаляем файл обложки если есть
     if book.cover_image_url:
         cover_path = book.cover_image_url.replace("/static/", "static/")
         if os.path.exists(cover_path):
             os.remove(cover_path)
-    
+
     # Очищаем URL обложки в базе данных
     book.cover_image_url = None
     book.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(book)
-    
+
     return BookResponse.model_validate(book)
 
 
 @router.get("/my/books", response_model=BookListResponse)
 async def get_my_books(
-    current_user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    current_user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)
 ):
     """Получение книг текущего пользователя"""
     book_service = BookService(db)
     books = book_service.get_user_books(current_user_id)
-    
+
     # Преобразование в формат ответа
     book_responses = []
     for book in books:
         book_response = BookResponse.model_validate(book)
         book_responses.append(book_response)
-    
+
     return BookListResponse(
-        books=book_responses,
-        total=len(books),
-        page=1,
-        limit=len(books),
-        pages=1
+        books=book_responses, total=len(books), page=1, limit=len(books), pages=1
     )

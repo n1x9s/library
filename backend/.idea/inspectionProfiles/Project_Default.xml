@@ -1,0 +1,66 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="alembic" />
+          <option value="annotated-types" />
+          <option value="anyio" />
+          <option value="asyncpg" />
+          <option value="bcrypt" />
+          <option value="certifi" />
+          <option value="click" />
+          <option value="dnspython" />
+          <option value="ecdsa" />
+          <option value="email-validator" />
+          <option value="fastapi" />
+          <option value="fastapi-cli" />
+          <option value="fastapi-versioning" />
+          <option value="gigachat" />
+          <option value="greenlet" />
+          <option value="h11" />
+          <option value="httpcore" />
+          <option value="httptools" />
+          <option value="httpx" />
+          <option value="idna" />
+          <option value="itsdangerous" />
+          <option value="jinja2" />
+          <option value="loguru" />
+          <option value="mako" />
+          <option value="markdown-it-py" />
+          <option value="markupsafe" />
+          <option value="mdurl" />
+          <option value="orjson" />
+          <option value="pyasn1" />
+          <option value="pydantic" />
+          <option value="pydantic-core" />
+          <option value="pydantic-extra-types" />
+          <option value="pydantic-settings" />
+          <option value="pygments" />
+          <option value="python-dotenv" />
+          <option value="python-jose" />
+          <option value="python-multipart" />
+          <option value="pyyaml" />
+          <option value="rich" />
+          <option value="rich-toolkit" />
+          <option value="rsa" />
+          <option value="shellingham" />
+          <option value="six" />
+          <option value="sniffio" />
+          <option value="sqlalchemy" />
+          <option value="starlette" />
+          <option value="typer" />
+          <option value="typing" />
+          <option value="typing-extensions" />
+          <option value="ujson" />
+          <option value="uvicorn" />
+          <option value="uvloop" />
+          <option value="watchfiles" />
+          <option value="websockets" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

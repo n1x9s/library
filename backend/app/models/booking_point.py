@@ -1,6 +1,7 @@
 """
 Модель пункта выдачи
 """
+
 import uuid
 from sqlalchemy import Column, String, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -10,6 +11,7 @@ from app.core.database import Base
 
 class BookingPoint(Base):
     """Модель пункта выдачи"""
+
     __tablename__ = "booking_points"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
