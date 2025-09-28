@@ -6,6 +6,13 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 
+class UserLogin(BaseModel):
+    """Схема входа пользователя"""
+    
+    username: str
+    password: str
+
+
 class Token(BaseModel):
     """Схема токена"""
 

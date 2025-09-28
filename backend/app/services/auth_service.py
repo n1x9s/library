@@ -7,7 +7,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin
+from app.schemas.user import UserCreate
+from app.schemas.auth import UserLogin
 from app.core.security import (
     verify_password,
     get_password_hash,
@@ -60,9 +61,15 @@ class AuthService:
 
         return db_user
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
-        """Аутентификация пользователя"""
-        user = self.db.query(User).filter(User.email == email).first()
+    def authenticate_user(self, username_or_email: str, password: str) -> Optional[User]:
+        """Аутентификация пользователя по username или email"""
+        # Сначала ищем по email
+        user = self.db.query(User).filter(User.email == username_or_email).first()
+        
+        # Если не найден по email, ищем по username
+        if not user:
+            user = self.db.query(User).filter(User.username == username_or_email).first()
+        
         if not user:
             return None
 
@@ -73,11 +80,11 @@ class AuthService:
 
     def login_user(self, login_data: UserLogin) -> dict:
         """Вход пользователя в систему"""
-        user = self.authenticate_user(login_data.email, login_data.password)
+        user = self.authenticate_user(login_data.username, login_data.password)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный email или пароль",
+                detail="Неверное имя пользователя или пароль",
             )
 
         if not user.is_active:

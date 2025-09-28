@@ -2,14 +2,13 @@
 API endpoints для работы с книгами
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from fastapi.security import HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 import os
 from datetime import datetime
 from app.core.database import get_db
-from app.core.security import get_user_id_from_token
+from app.core.auth import get_current_user_id, get_current_user
 from app.utils.image_processing import validate_image, process_image
 from app.schemas.book import (
     BookCreate,
@@ -22,13 +21,6 @@ from app.schemas.book import (
 from app.services.book_service import BookService
 
 router = APIRouter(prefix="/books", tags=["Книги"])
-security = HTTPBearer()
-
-
-def get_current_user_id(credentials=Depends(security)) -> str:
-    """Получение ID текущего пользователя из токена"""
-    token = credentials.credentials
-    return get_user_id_from_token(token)
 
 
 @router.get("/", response_model=BookListResponse)
@@ -89,10 +81,11 @@ async def get_book(book_id: str, db: Session = Depends(get_db)):
 @router.post("/", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
 async def create_book(
     book_data: BookCreate,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Добавление новой книги"""
+    current_user_id = get_current_user_id(request)
     book_service = BookService(db)
     book = book_service.create_book(book_data, current_user_id)
     return book
@@ -102,10 +95,11 @@ async def create_book(
 async def update_book(
     book_id: str,
     book_data: BookUpdate,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Редактирование книги"""
+    current_user_id = get_current_user_id(request)
     book_service = BookService(db)
 
     # Фильтруем None значения
@@ -129,10 +123,11 @@ async def update_book(
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_book(
     book_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Удаление книги"""
+    current_user_id = get_current_user_id(request)
     book_service = BookService(db)
     success = book_service.delete_book(book_id, current_user_id)
 
@@ -145,11 +140,17 @@ async def delete_book(
 @router.post("/{book_id}/cover", response_model=BookResponse)
 async def upload_book_cover(
     book_id: str,
+    request: Request,
     file: UploadFile = File(...),
-    current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     """Загрузка обложки книги"""
+    print(f"Загрузка обложки для книги {book_id}")
+    print(f"Файл: {file.filename}, тип: {file.content_type}")
+    
+    current_user_id = get_current_user_id(request)
+    print(f"Текущий пользователь: {current_user_id}")
+    
     book_service = BookService(db)
 
     # Проверяем, что книга существует и принадлежит пользователю
@@ -174,13 +175,16 @@ async def upload_book_cover(
 
     # Обрабатываем и сохраняем изображение
     try:
+        print(f"Обрабатываем изображение в директории: {book_covers_dir}")
         file_path = process_image(file, book_covers_dir, max_size=(800, 600))
+        print(f"Изображение сохранено по пути: {file_path}")
 
         # Удаляем старую обложку если есть
         if book.cover_image_url:
             old_cover_path = book.cover_image_url.replace("/static/", "static/")
             if os.path.exists(old_cover_path):
                 os.remove(old_cover_path)
+                print(f"Удалена старая обложка: {old_cover_path}")
 
         # Обновляем URL обложки в базе данных
         cover_url = f"/static/uploads/book_covers/{os.path.basename(file_path)}"
@@ -188,6 +192,8 @@ async def upload_book_cover(
         book.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(book)
+        
+        print(f"Обложка обновлена в БД: {cover_url}")
 
         return BookResponse.model_validate(book)
 
@@ -201,10 +207,11 @@ async def upload_book_cover(
 @router.delete("/{book_id}/cover", response_model=BookResponse)
 async def delete_book_cover(
     book_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Удаление обложки книги"""
+    current_user_id = get_current_user_id(request)
     book_service = BookService(db)
 
     # Проверяем, что книга существует и принадлежит пользователю
@@ -237,9 +244,10 @@ async def delete_book_cover(
 
 @router.get("/my/books", response_model=BookListResponse)
 async def get_my_books(
-    current_user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)
+    request: Request, db: Session = Depends(get_db)
 ):
     """Получение книг текущего пользователя"""
+    current_user_id = get_current_user_id(request)
     book_service = BookService(db)
     books = book_service.get_user_books(current_user_id)
 

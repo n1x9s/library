@@ -84,7 +84,7 @@ class UserUpdate(BaseModel):
 class UserLogin(BaseModel):
     """Схема входа пользователя"""
 
-    email: EmailStr
+    username: str = Field(..., description="Имя пользователя или email")
     password: str
 
 

@@ -57,7 +57,10 @@ class BookService:
         """Получение списка книг с фильтрацией"""
         query = (
             self.db.query(Book)
-            .options(joinedload(Book.owner))
+            .options(
+                joinedload(Book.owner),
+                joinedload(Book.bookings)
+            )
             .filter(Book.is_active == True)
         )
 
@@ -97,7 +100,10 @@ class BookService:
         """Получение книг пользователя"""
         return (
             self.db.query(Book)
-            .options(joinedload(Book.owner))
+            .options(
+                joinedload(Book.owner),
+                joinedload(Book.bookings)
+            )
             .filter(and_(Book.owner_id == user_id, Book.is_active == True))
             .all()
         )

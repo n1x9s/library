@@ -2,7 +2,7 @@
 Главный файл приложения FastAPI
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
@@ -33,7 +33,56 @@ app = FastAPI(
     description="REST API для приложения обмена книгами",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
+
+# Настройка OpenAPI схемы для сессионной аутентификации
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Добавляем информацию о сессионной аутентификации
+    openapi_schema["info"]["description"] = """
+    REST API для приложения обмена книгами с сессионной аутентификацией.
+    
+    ## Аутентификация
+    
+    API использует сессионную аутентификацию через cookies:
+    
+    1. Войдите в систему через `POST /auth/login` с username и password
+    2. После успешного входа будет установлен cookie `session_token`
+    3. Все последующие запросы будут автоматически аутентифицированы
+    4. Для выхода используйте `POST /auth/logout`
+    
+    ## Публичные эндпойнты
+    
+    - `GET /` - Информация об API
+    - `GET /health` - Проверка здоровья
+    - `POST /auth/register` - Регистрация
+    - `POST /auth/login` - Вход в систему
+    - `GET /books/` - Список книг
+    - `GET /books/{book_id}` - Детали книги
+    - `GET /bookings/booking-points` - Пункты выдачи
+    
+    ## Защищенные эндпойнты
+    
+    Все остальные эндпойнты требуют аутентификации через сессию.
+    """
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Настройка CORS
 app.add_middleware(
@@ -56,8 +105,38 @@ app.include_router(notifications.router)
 
 @app.get("/")
 async def root():
-    """Корневой endpoint"""
-    return {"message": "Library Exchange API", "version": "1.0.0", "docs": "/docs"}
+    """
+    Корневой endpoint
+    
+    Информация о API и инструкции по сессионной аутентификации
+    """
+    return {
+        "message": "Library Exchange API", 
+        "version": "1.0.0", 
+        "docs": "/docs",
+        "authentication": {
+            "type": "session_based",
+            "login_endpoint": "/auth/login",
+            "description": "Используйте /auth/login для входа в систему",
+            "usage": "Отправьте POST запрос с username и password, получите cookie session_token",
+            "note": "После входа все запросы автоматически аутентифицированы через cookie"
+        },
+        "endpoints": {
+            "auth": "/auth/* - Аутентификация и управление пользователями",
+            "books": "/books/* - Управление книгами",
+            "bookings": "/bookings/* - Управление бронированиями",
+            "notifications": "/notifications/* - Уведомления"
+        },
+        "public_endpoints": [
+            "GET / - Информация об API",
+            "GET /health - Проверка здоровья",
+            "POST /auth/register - Регистрация",
+            "POST /auth/login - Вход в систему",
+            "GET /books/ - Список книг",
+            "GET /books/{book_id} - Детали книги",
+            "GET /bookings/booking-points - Пункты выдачи"
+        ]
+    }
 
 
 @app.get("/health")

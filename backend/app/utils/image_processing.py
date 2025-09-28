@@ -45,8 +45,12 @@ def process_image(
     Returns:
         str: Путь к сохраненному файлу
     """
+    print(f"Начинаем обработку изображения: {file.filename}")
+    print(f"Директория загрузки: {upload_dir}")
+    
     # Создание директории если не существует
     os.makedirs(upload_dir, exist_ok=True)
+    print(f"Директория создана/существует: {upload_dir}")
 
     # Генерация уникального имени файла
     file_extension = file.filename.split(".")[-1].lower()
@@ -55,23 +59,35 @@ def process_image(
 
     filename = f"{uuid.uuid4()}.{file_extension}"
     file_path = os.path.join(upload_dir, filename)
+    print(f"Сгенерированное имя файла: {filename}")
+    print(f"Полный путь: {file_path}")
 
     try:
+        print("Открываем изображение...")
         # Открытие изображения
         with Image.open(file.file) as img:
+            print(f"Исходный размер изображения: {img.size}")
+            print(f"Режим изображения: {img.mode}")
+            
             # Конвертация в RGB если необходимо
             if img.mode in ("RGBA", "LA", "P"):
+                print("Конвертируем в RGB...")
                 img = img.convert("RGB")
 
             # Изменение размера с сохранением пропорций
+            print(f"Изменяем размер до: {max_size}")
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            print(f"Новый размер: {img.size}")
 
             # Сохранение изображения
+            print("Сохраняем изображение...")
             img.save(file_path, "JPEG", quality=85, optimize=True)
+            print(f"Изображение успешно сохранено: {file_path}")
 
         return file_path
 
     except Exception as e:
+        print(f"Ошибка при обработке изображения: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Ошибка обработки изображения: {str(e)}",

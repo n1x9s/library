@@ -97,6 +97,7 @@ class BookResponse(BookBase):
     created_at: datetime
     updated_at: datetime
     owner: Optional[dict] = None
+    bookings: Optional[List[dict]] = None
 
     @validator("id", "owner_id", pre=True)
     def convert_uuid_to_str(cls, v):
@@ -109,6 +110,25 @@ class BookResponse(BookBase):
         if v is not None and hasattr(v, "id"):
             # Если это объект User, преобразуем в словарь
             return {"id": str(v.id), "username": v.username, "full_name": v.full_name}
+        return v
+
+    @validator("bookings", pre=True)
+    def convert_bookings_to_dict(cls, v):
+        if v is not None:
+            # Если это список объектов Booking, преобразуем в список словарей
+            return [
+                {
+                    "id": str(booking.id),
+                    "borrower_id": str(booking.borrower_id),
+                    "status": booking.status.value if hasattr(booking.status, 'value') else booking.status,
+                    "booking_date": booking.booking_date.isoformat() if booking.booking_date else None,
+                    "planned_pickup_date": booking.planned_pickup_date.isoformat() if booking.planned_pickup_date else None,
+                    "planned_return_date": booking.planned_return_date.isoformat() if booking.planned_return_date else None,
+                    "actual_pickup_date": booking.actual_pickup_date.isoformat() if booking.actual_pickup_date else None,
+                    "actual_return_date": booking.actual_return_date.isoformat() if booking.actual_return_date else None,
+                }
+                for booking in v
+            ]
         return v
 
     class Config:

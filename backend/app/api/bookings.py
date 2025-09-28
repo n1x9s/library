@@ -2,12 +2,11 @@
 API endpoints для работы с бронированиями
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.security import HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.core.database import get_db
-from app.core.security import get_user_id_from_token
+from app.core.auth import get_current_user_id
 from app.schemas.booking import (
     BookingCreate,
     BookingUpdate,
@@ -21,13 +20,6 @@ from app.services.booking_service import BookingService
 from app.models.booking_point import BookingPoint
 
 router = APIRouter(prefix="/bookings", tags=["Бронирования"])
-security = HTTPBearer()
-
-
-def get_current_user_id(credentials=Depends(security)) -> str:
-    """Получение ID текущего пользователя из токена"""
-    token = credentials.credentials
-    return get_user_id_from_token(token)
 
 
 @router.get("/booking-points", response_model=list[BookingPointResponse])
@@ -40,10 +32,11 @@ async def get_booking_points(db: Session = Depends(get_db)):
 @router.post("/", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     booking_data: BookingCreate,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Создание бронирования"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     booking = booking_service.create_booking(booking_data, current_user_id)
     return booking
@@ -56,10 +49,11 @@ async def get_bookings(
     as_owner: bool = Query(False, description="Показать как владелец"),
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(20, ge=1, le=100, description="Количество на странице"),
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """Получение бронирований пользователя"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
 
     search_params = BookingSearchParams(
@@ -88,10 +82,11 @@ async def get_bookings(
 @router.get("/{booking_id}", response_model=BookingResponse)
 async def get_booking(
     booking_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Детальная информация о бронировании"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     booking = booking_service.get_booking_by_id(booking_id)
 
@@ -117,10 +112,11 @@ async def get_booking(
 async def update_booking_status(
     booking_id: str,
     status_data: BookingStatusUpdate,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Изменение статуса бронирования"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     booking = booking_service.update_booking_status(
         booking_id, status_data.status, current_user_id
@@ -137,10 +133,11 @@ async def update_booking_status(
 @router.delete("/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_booking(
     booking_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Отмена бронирования"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     success = booking_service.cancel_booking(booking_id, current_user_id)
 
@@ -153,10 +150,11 @@ async def cancel_booking(
 @router.post("/{booking_id}/confirm-pickup", response_model=BookingResponse)
 async def confirm_pickup(
     booking_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Подтверждение получения книги"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     booking = booking_service.confirm_pickup(booking_id, current_user_id)
 
@@ -171,10 +169,11 @@ async def confirm_pickup(
 @router.post("/{booking_id}/confirm-return", response_model=BookingResponse)
 async def confirm_return(
     booking_id: str,
-    current_user_id: str = Depends(get_current_user_id),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Подтверждение возврата книги"""
+    current_user_id = get_current_user_id(request)
     booking_service = BookingService(db)
     booking = booking_service.confirm_return(booking_id, current_user_id)
 
@@ -184,3 +183,24 @@ async def confirm_return(
         )
 
     return booking
+
+
+@router.post("/{booking_id}/return", status_code=status.HTTP_200_OK)
+async def return_booking(
+    booking_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Возврат книги"""
+    current_user_id = get_current_user_id(request)
+    booking_service = BookingService(db)
+    
+    success = booking_service.return_book(booking_id, current_user_id)
+    
+    if success:
+        return {"message": "Книга успешно возвращена"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ошибка при возврате книги"
+        )

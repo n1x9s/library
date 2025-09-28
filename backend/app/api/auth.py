@@ -2,28 +2,19 @@
 API endpoints для аутентификации
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request, Response
 from sqlalchemy.orm import Session
 import os
 from datetime import datetime
 from app.core.database import get_db
-from app.core.security import verify_token, get_user_id_from_token
+from app.core.session import create_session_token, clear_session
+from app.core.auth import get_current_user_id, get_current_user
 from app.utils.image_processing import validate_image, process_image
-from app.schemas.auth import Token, RefreshTokenRequest
 from app.schemas.user import UserCreate, UserLogin, UserResponse, UserUpdate
 from app.services.auth_service import AuthService
+from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
-security = HTTPBearer()
-
-
-def get_current_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
-    """Получение ID текущего пользователя из токена"""
-    token = credentials.credentials
-    return get_user_id_from_token(token)
 
 
 @router.post(
@@ -36,90 +27,88 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=Token)
-async def login(login_data: UserLogin, db: Session = Depends(get_db)):
-    """Вход в систему"""
-    auth_service = AuthService(db)
-    result = auth_service.login_user(login_data)
-    return Token(
-        access_token=result["access_token"],
-        refresh_token=result["refresh_token"],
-        token_type=result["token_type"],
-    )
-
-
-@router.post("/refresh", response_model=Token)
-async def refresh_token(
-    refresh_data: RefreshTokenRequest, db: Session = Depends(get_db)
+@router.post("/login", response_model=UserResponse)
+async def login(
+    login_data: UserLogin, 
+    response: Response,
+    db: Session = Depends(get_db)
 ):
-    """Обновление токена"""
-    try:
-        # Проверка refresh токена
-        payload = verify_token(refresh_data.refresh_token, "refresh")
-        user_id = payload.get("sub")
-
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Недействительный refresh токен",
-            )
-
-        # Проверка существования пользователя
-        auth_service = AuthService(db)
-        user = auth_service.get_user_by_id(user_id)
-        if not user or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Пользователь не найден или деактивирован",
-            )
-
-        # Создание новых токенов
-        from app.core.security import create_access_token, create_refresh_token
-
-        access_token = create_access_token(
-            data={"sub": str(user.id), "username": user.username}
-        )
-        refresh_token = create_refresh_token(data={"sub": str(user.id)})
-
-        return Token(
-            access_token=access_token, refresh_token=refresh_token, token_type="bearer"
-        )
-
-    except HTTPException:
-        raise
-    except Exception:
+    """
+    Вход в систему
+    
+    Создает сессию пользователя и устанавливает cookie.
+    После успешного входа вы автоматически получите доступ ко всем защищенным эндпойнтам.
+    """
+    auth_service = AuthService(db)
+    user = auth_service.authenticate_user(login_data.username, login_data.password)
+    
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный refresh токен",
+            detail="Неверное имя пользователя или пароль"
         )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь деактивирован"
+        )
+    
+    # Создаем токен сессии
+    session_token = create_session_token(str(user.id))
+    
+    # Устанавливаем cookie с токеном сессии
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        max_age=86400,  # 24 часа
+        httponly=True,  # Защита от XSS
+        secure=False,   # В продакшене должно быть True для HTTPS
+        samesite="lax"
+    )
+    
+    return UserResponse.model_validate(user)
+
+
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout():
-    """Выход из системы (клиент должен удалить токены)"""
+async def logout(request: Request, response: Response):
+    """
+    Выход из системы
+    
+    Очищает сессию пользователя и удаляет cookie.
+    """
+    # Очищаем сессию
+    clear_session(request)
+    
+    # Удаляем cookie
+    response.delete_cookie(
+        key="session_token",
+        httponly=True,
+        samesite="lax"
+    )
+    
     return {"message": "Успешный выход из системы"}
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    current_user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
 ):
-    """Получение профиля текущего пользователя"""
-    auth_service = AuthService(db)
-    user = auth_service.get_user_by_id(current_user_id)
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден"
-        )
-
-    return user
+    """
+    Получение профиля текущего пользователя
+    
+    Проверяет валидность сессии и возвращает информацию о пользователе.
+    Используйте этот эндпойнт для проверки аутентификации.
+    """
+    return UserResponse.model_validate(current_user)
 
 
 @router.put("/me", response_model=UserResponse)
 async def update_current_user(
     user_data: UserUpdate,
-    current_user_id: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Обновление профиля текущего пользователя"""
@@ -133,7 +122,7 @@ async def update_current_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Нет данных для обновления"
         )
 
-    user = auth_service.update_user(current_user_id, update_data)
+    user = auth_service.update_user(str(current_user.id), update_data)
 
     if not user:
         raise HTTPException(
@@ -146,19 +135,10 @@ async def update_current_user(
 @router.post("/me/avatar", response_model=UserResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
-    current_user_id: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Загрузка аватара пользователя"""
-    auth_service = AuthService(db)
-
-    # Получаем пользователя
-    user = auth_service.get_user_by_id(current_user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден"
-        )
-
     # Валидируем загружаемый файл
     validate_image(file)
 
@@ -171,19 +151,19 @@ async def upload_avatar(
         file_path = process_image(file, avatars_dir, max_size=(400, 400))
 
         # Удаляем старый аватар если есть
-        if user.avatar_url:
-            old_avatar_path = user.avatar_url.replace("/static/", "static/")
+        if current_user.avatar_url:
+            old_avatar_path = current_user.avatar_url.replace("/static/", "static/")
             if os.path.exists(old_avatar_path):
                 os.remove(old_avatar_path)
 
         # Обновляем URL аватара в базе данных
         avatar_url = f"/static/uploads/avatars/{os.path.basename(file_path)}"
-        user.avatar_url = avatar_url
-        user.updated_at = datetime.utcnow()
+        current_user.avatar_url = avatar_url
+        current_user.updated_at = datetime.utcnow()
         db.commit()
-        db.refresh(user)
+        db.refresh(current_user)
 
-        return UserResponse.model_validate(user)
+        return UserResponse.model_validate(current_user)
 
     except Exception as e:
         raise HTTPException(
@@ -194,28 +174,20 @@ async def upload_avatar(
 
 @router.delete("/me/avatar", response_model=UserResponse)
 async def delete_avatar(
-    current_user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
 ):
     """Удаление аватара пользователя"""
-    auth_service = AuthService(db)
-
-    # Получаем пользователя
-    user = auth_service.get_user_by_id(current_user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден"
-        )
-
     # Удаляем файл аватара если есть
-    if user.avatar_url:
-        avatar_path = user.avatar_url.replace("/static/", "static/")
+    if current_user.avatar_url:
+        avatar_path = current_user.avatar_url.replace("/static/", "static/")
         if os.path.exists(avatar_path):
             os.remove(avatar_path)
 
     # Очищаем URL аватара в базе данных
-    user.avatar_url = None
-    user.updated_at = datetime.utcnow()
+    current_user.avatar_url = None
+    current_user.updated_at = datetime.utcnow()
     db.commit()
-    db.refresh(user)
+    db.refresh(current_user)
 
-    return UserResponse.model_validate(user)
+    return UserResponse.model_validate(current_user)

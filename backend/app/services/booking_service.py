@@ -85,12 +85,14 @@ class BookingService:
                 detail="Книга уже забронирована",
             )
 
-        # Создание бронирования
+        # Создание бронирования со статусом "TAKEN" (сразу взято)
         db_booking = Booking(
             book_id=booking_data.book_id,
             borrower_id=borrower_id,
             booking_point_id=booking_data.booking_point_id,
+            status=BookingStatus.TAKEN,  # Сразу статус "взято"
             planned_pickup_date=booking_data.planned_pickup_date,
+            actual_pickup_date=datetime.utcnow(),  # Устанавливаем дату взятия
             planned_return_date=booking_data.planned_return_date,
             notes=booking_data.notes,
         )
@@ -314,6 +316,43 @@ class BookingService:
         # Возвращаем доступность книги
         book.is_available = True
         book.updated_at = datetime.utcnow()
+
+        self.db.commit()
+
+        return True
+
+    def return_book(self, booking_id: str, user_id: str) -> bool:
+        """Возврат книги"""
+        booking = self.get_booking_by_id(booking_id)
+        if not booking:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Бронирование не найдено"
+            )
+
+        # Проверка прав - только заемщик может вернуть книгу
+        if str(booking.borrower_id) != str(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Нет прав для возврата этой книги",
+            )
+
+        # Можно вернуть только взятые книги
+        if booking.status != BookingStatus.TAKEN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Книга не была взята или уже возвращена",
+            )
+
+        # Обновляем статус бронирования
+        booking.status = BookingStatus.RETURNED
+        booking.actual_return_date = datetime.utcnow()
+        booking.updated_at = datetime.utcnow()
+
+        # Возвращаем доступность книги
+        book = self.db.query(Book).filter(Book.id == booking.book_id).first()
+        if book:
+            book.is_available = True
+            book.updated_at = datetime.utcnow()
 
         self.db.commit()
 
